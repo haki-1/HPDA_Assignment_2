@@ -16,22 +16,12 @@ export const dataSetSlice = createSlice({
   initialState: [],
   reducers: {
       // add reducer if needed
-      updateSelectedItem: (state, action) => {
-        console.log("Payload size:", action.payload.length)
-        const updatedArray = state.map(item=>{
-          if (action.payload.some((element) => element.index === item.index)){
-            return {...item, marked:true};
-          }else{
-            return {...item, marked:false};
-          }})
-          console.log("Return: ", updatedArray)
-          //return updatedArray
-    },
   },
   extraReducers: builder => {
     builder.addCase(getSeoulBikeData.fulfilled, (state, action) => {
       // Add any fetched house to the array
-      return action.payload
+      // return action.payload
+      return action.payload.map(x => { return {...x, Date: new Date(x.Date.replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3-$2-$1")).valueOf()}; });
     })
   }
 })

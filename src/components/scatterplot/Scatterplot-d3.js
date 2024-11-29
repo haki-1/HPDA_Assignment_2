@@ -2,7 +2,7 @@ import * as d3 from 'd3'
 import { getDefaultFontSize } from '../../utils/helper';
 
 class ScatterplotD3 {
-    margin = {top: 100, right: 50, bottom: 50, left: 50};
+    margin = {top: 100, right: 5, bottom: 50, left: 100};
     size;
     height;
     width;
@@ -15,13 +15,11 @@ class ScatterplotD3 {
     // cellSizeScale = d3.scaleLinear()
     //     .range([2, this.radius-1])
     // ;
+    circleRadius = 1;
     xScale;
     yScale;
-    transitionDuration=1000;
-    circleRadius = 1;
+    brush;
 
-    mouseDown = false;
-    valuesSelected = [];
 
 
     constructor(el){
@@ -49,8 +47,9 @@ class ScatterplotD3 {
             .attr("height", this.height + this.margin.top + this.margin.bottom)
             .append("g")
             .attr("class","matSvgG")
-            .attr("transform", "translate(" + this.margin.left + "," + this.margin.top + ")")
+            .attr("transform", "translate(" + this.margin.left + "," + this.margin.top + ")");
         ;
+
         this.xScale = d3.scaleLinear().range([0,this.width]);
         this.yScale = d3.scaleLinear().range([this.height,0]);
 
@@ -62,22 +61,14 @@ class ScatterplotD3 {
         this.matSvg.append("g")
             .attr("class","yAxisG")
         ;
+
     }
 
-    updateFunction1(selection, xAttribute, yAttribute){
+    updateFunction1(selection){
         // transform selection
         // selection.attr("transform", (itemData)=>{
         //      // use scales to return shape position from data values
         // })
-        selection
-            .transition().duration(this.transitionDuration)
-            .attr("transform", (item)=>{
-                // use scales to return shape position from data values
-                const xPos = this.xScale(item[xAttribute])// ? new Date(item[xAttribute].replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3-$2-$1")) : NaN);
-                const yPos = this.yScale(item[yAttribute]);
-                return "translate("+xPos+","+yPos+")";
-            })
-
 
         // change sub-element
         // selection.select(".classname")
@@ -86,9 +77,22 @@ class ScatterplotD3 {
         //    })
     }
 
+    updateDots(selection,xAttribute,yAttribute){
+        // transform selection
+        selection
+            .transition().duration(this.transitionDuration)
+            .attr("transform", (item)=>{
+                // use scales to return shape position from data values
+                const xPos = this.xScale(item[xAttribute]);
+                const yPos = this.yScale(item[yAttribute]);
+                return "translate("+xPos+","+yPos+")";
+            })
+        // this.changeBorderAndOpacity(selection)
+    }
+
     updateAxis = function(visData,xAttribute,yAttribute){
-        const minX = d3.min(visData.map(item=> item[xAttribute]));// ? new Date(item[xAttribute].replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3-$2-$1")) : NaN));
-        const maxX = d3.max(visData.map(item=> item[xAttribute]));// ? new Date(item[xAttribute].replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3-$2-$1")) : NaN));
+        const minX = d3.min(visData.map(item=>item[xAttribute]));
+        const maxX = d3.max(visData.map(item=>item[xAttribute]));
         // this.xScale.domain([0, maxX]);
         this.xScale.domain([minX, maxX]);
         const minY = d3.min(visData.map(item=>item[yAttribute]));
@@ -97,25 +101,35 @@ class ScatterplotD3 {
         this.yScale.domain([minY, maxY]);
 
         this.matSvg.select(".xAxisG")
+            .call(g => g.append("text")
+                .attr("x", this.width - this.margin.right)
+                .attr("y", -4)
+                .attr("text-anchor", "end")
+                .attr("fill", "currentColor")
+                .text(xAttribute))
             .transition().duration(this.transitionDuration)
-            // .call(d3.axisBottom(this.xScale).tickFormat(d3.utcFormat("%d/%m/%Y")))
             .call(d3.axisBottom(this.xScale))
         ;
         this.matSvg.select(".yAxisG")
+            .call(g => g.append("text")
+                .attr("x", 4)
+                .attr("text-anchor", "start")
+                .attr("fill", "currentColor")
+                .text(yAttribute))
             .transition().duration(this.transitionDuration)
             .call(d3.axisLeft(this.yScale))
         ;
     }
 
 
-    renderVis = function (visData, xAttribute, yAttribute, controllerMethods){
+    renderScatterplot = function (visData, xAttribute, yAttribute, controllerMethods){
         // build the size scale from the data
         // const minVal =
         // const maxValo =
         // this.scale1.domain([minVal, maxVal])
         this.updateAxis(visData,xAttribute,yAttribute);
 
-        this.matSvg.selectAll(".itemG")
+        this.matSvg.selectAll(".dotG")
             // all elements with the class .cellG (empty the first time)
             .data(visData,(itemData)=>itemData.index)
             .join(
@@ -123,46 +137,20 @@ class ScatterplotD3 {
                     // all data items to add:
                     // doesn’exist in the select but exist in the new array
                     const itemG=enter.append("g")
-                        .attr("class","itemG")
-                        // .on("event1", (event,itemData)=>{
-                        //     controllerMethods.handleOnEvent1(itemData);
-                        // })
-                        // .on("event2",(event,itemData)=>{
-                        //     controllerMethods.handleOnEvent2(itemData);
-                        // })                        
+                        .attr("class","dotG")
+                        // .attr("stroke", "steelblue")
                     ;
-
                     // render element as child of each element "g"
                     itemG.append("circle")
+                    // ...
                         .attr("class","dotCircle")
                         .attr("r",this.circleRadius)
-                        //.attr("stroke","red")
-                    // ...
+                        .attr("stroke","steelblue")
+                        .attr("fill", "none")
                     ;
-                    this.updateFunction1(itemG,xAttribute,yAttribute);
-
-                    this.matSvg.call(d3.brush().on("start brush end", ({selection}) => {
-                        let value = [];
-                        if (selection) {
-                          const [[x0, y0], [x1, y1]] = selection;
-                          value = itemG
-                            .style("stroke", "gray")
-                            // .filter(d => x0 <= this.xScale(new Date(d[xAttribute].replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3-$2-$1"))) && this.xScale(new Date(d[xAttribute].replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3-$2-$1"))) < x1
-                            .filter(d => x0 <= this.xScale(d[xAttribute]) && this.xScale(d[xAttribute]) < x1
-                                    && y0 <= this.yScale(d[yAttribute]) && this.yScale(d[yAttribute]) < y1)
-                            .style("stroke", "steelblue")
-                            .data()
-                            ;
-                        } else {
-                            itemG.style("stroke", "steelblue");
-                        }
-                        // Inform downstream cells that the selection has changed.
-                        this.matSvg.property("value", value).dispatch("input");
-                        this.valuesSelected = value;
-                        controllerMethods.handleOnEvent1(this.valuesSelected);
-                      }))
+                    this.updateDots(itemG,xAttribute,yAttribute);
                 },
-                update=>{this.updateFunction1(update,xAttribute,yAttribute)},
+                update=>{this.updateFunction1(update)},
                 exit =>{
                     exit.remove()
                     ;
@@ -170,6 +158,38 @@ class ScatterplotD3 {
 
             )
 
+
+        this.brush = this.matSvg.call(d3.brush().on("start brush end", ({selection}) => {
+            if (selection) {
+                console.log(selection);
+                const [[x0, y0], [x1, y1]] = selection;
+                this.matSvg.selectAll(".dotG").select(".dotCircle")
+                    .attr("stroke", d => x0 <= this.xScale(d[xAttribute]) && this.xScale(d[xAttribute]) < x1
+                                    && y0 <= this.yScale(d[yAttribute]) && this.yScale(d[yAttribute]) < y1 ? "steelblue" : "gray");
+            }
+        }).on("end", ({selection}) => {
+            let value = [];
+            if (selection) {
+                const [[x0, y0], [x1, y1]] = selection;
+                value = this.matSvg.selectAll(".dotG").select(".dotCircle")
+                    .filter(d => x0 <= this.xScale(d[xAttribute]) && this.xScale(d[xAttribute]) < x1
+                            && y0 <= this.yScale(d[yAttribute]) && this.yScale(d[yAttribute]) < y1)
+                    .data();
+            } else {
+                value = visData;
+                this.matSvg.selectAll(".dotG").select(".dotCircle").attr("stroke", "steelblue");
+            }
+            controllerMethods.handleOnBrushEnd(value);
+        }))
+    
+    }
+
+    renderScatterplotOnSelectionChange = function (selectedData){
+        if (selectedData.visValue == 2) {
+            // this.matSvg.call(d3.brush().clear);
+            this.brush.call(d3.brush().clear);
+            this.matSvg.selectAll(".dotG").select(".dotCircle").attr("stroke", d => d3.some(selectedData.data, x => d.index == x.index) ? "steelblue" : "gray");
+        }
     }
 
     clear = function(){

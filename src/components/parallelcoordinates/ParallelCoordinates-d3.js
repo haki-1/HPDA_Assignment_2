@@ -2,7 +2,7 @@ import * as d3 from 'd3'
 import { getDefaultFontSize } from '../../utils/helper';
 
 class ParallelCoordinatesD3 {
-    margin = {top: 100, right: 50, bottom: 50, left: 50};
+    margin = {top: 100, right: 5, bottom: 50, left: 100};
     size;
     height;
     width;
@@ -15,7 +15,11 @@ class ParallelCoordinatesD3 {
     // cellSizeScale = d3.scaleLinear()
     //     .range([2, this.radius-1])
     // ;
-    axes;
+    xScales;
+    yScale;
+    brush;
+    lineColorScale;
+    selections;
 
 
     constructor(el){
@@ -62,73 +66,47 @@ class ParallelCoordinatesD3 {
         //    })
     }
 
-    gimmeValue = function(visData, attribute, value){
-        if(attribute == "Date") {return new Date(value.replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3-$2-$1"));}
-        if(attribute == "Seasons") {if (value =="Winter") return 1; if (value == "Spring") return 2; if (value == "Summer") return 3; if (value == "Autumn") return 4;}
-        if(attribute == "Holiday") {if (value == "No Holiday") return 1; if (value == "Holiday") return 2;}
-        if(attribute == "FunctioningDay") {if (value == "No") return 1; if (value == "Yes") return 2;}
-        return value;
-    };
-
-    // tuka pravq x-ovete i y scale
-    updateAxis = function(visData){
-        //const keys = Object.keys(visData[0])
-                        const keys = Object.keys(visData[0]);
-                        keys.splice(keys.indexOf("Index"), 1);
-                        // const visDataCpy = visData.forEach(function(v){ delete v.Index });
-
-        // Create an horizontal (*x*) scale for each key.
-        const x = new Map(Array.from(keys, key => [key, d3.scaleLinear(d3.extent(visData, d => this.gimmeValue(visData,key,d[key])), [0,this.width])]));
-
-        // Create the vertical (*y*) scale.
-        const y = d3.scalePoint(keys, [this.height,0]);
-
-        // Create the color scale.
-        // const color = d3.scaleSequential(x.get(keyz).domain(), t => d3.interpolateBrBG(1 - t));
-
-        // Create the SVG container.
-        // const svg = d3.create("svg")
-        //     .attr("viewBox", [0, 0, width, height])
-        //     .attr("width", width)
-        //     .attr("height", height)
-        //     .attr("style", "max-width: 100%; height: auto;");
-
-        // Append the axis for each key.
-        this.axes = this.matSvg.append("g")
-        .selectAll("g")
-        .data(keys)
-        .join("g")
-            .attr("transform", d => `translate(0,${y(d)})`)
-            .each(function(d) { d3.select(this).call(d3.axisBottom(x.get(d))); })
-            .call(g => g.append("text")
-            .attr("x", 0)
-            .attr("y", -6)
-            .attr("text-anchor", "start")
-            .attr("fill", "currentColor")
-            .text(d => d))
-            .call(g => g.selectAll("text")
-            .clone(true).lower()
-            .attr("fill", "none")
-            .attr("stroke-width", 5)
-            .attr("stroke-linejoin", "round")
-            .attr("stroke", "white"));
+    updateAxis = function(keys){
+        const x = this.xScales;
+        const axes = this.matSvg.append("g")
+            .selectAll("g")
+            .data(keys)
+            .join("g")
+                .attr("transform", d => `translate(0,${this.yScale(d)})`)
+                .each(function(d) { d3.select(this).call(d3.axisBottom(x.get(d))); })
+                .call(g => g.append("text")
+                    .attr("x", 0)
+                    .attr("y", -6)
+                    .attr("text-anchor", "start")
+                    .attr("fill", "currentColor")
+                    .text(d => d))
+                .call(g => g.selectAll("text")
+                    .clone(true).lower()
+                    .attr("fill", "none")
+                    .attr("stroke-width", 5)
+                    .attr("stroke-linejoin", "round")
+                    .attr("stroke", "white"));
+            
+        return axes;
 
     }
 
-    renderVis = function (visData, controllerMethods){
-        
+
+    renderParallelCoordinates = function (visData, keys, attributeForColorScale, controllerMethods){
         // build the size scale from the data
         // const minVal =
         // const maxValo =
         // this.scale1.domain([minVal, maxVal])
-        if (visData.length > 0)
-            { 
-                this.updateAxis(visData); 
-                const x = new Map(Array.from(Object.keys(visData[0]), key => [key, d3.scaleLinear(d3.extent(visData, d => this.gimmeValue(visData,key,d[key])), [0,this.width])]));
-                const color = d3.scaleSequential(x.get("RentedBikeCount").domain(), t => d3.interpolateSpectral(1 - t));
-            
-            
-        this.matSvg.selectAll(".itemG")
+
+        this.xScales = new Map(Array.from(keys, key => key === "Date" ? [key, d3.scaleTime(d3.extent(visData, d => d[key]), [0,this.width])] : [key, d3.scaleLinear(d3.extent(visData, d => d[key]), [0,this.width])]));
+        this.yScale = d3.scalePoint(keys, [this.height, 0]);
+        this.color = d3.scaleSequential(this.xScales.get(attributeForColorScale).domain(), t => d3.interpolateTurbo(t));
+        const line = d3.line()
+        .defined(([,value]) => value != null)
+        .x(([key, value]) => this.xScales.get(key)(value))
+        .y(([key]) => this.yScale(key));
+        
+        this.matSvg.selectAll(".lineG")
             // all elements with the class .cellG (empty the first time)
             .data(visData,(itemData)=>itemData.index)
             .join(
@@ -136,76 +114,18 @@ class ParallelCoordinatesD3 {
                     // all data items to add:
                     // doesn’exist in the select but exist in the new array
                     const itemG=enter.append("g")
-                        .attr("class","itemG")
-                        .on("event1", (event,itemData)=>{
-                            controllerMethods.handleOnEvent1(itemData);
-                        })
-                        .on("event2",(event,itemData)=>{
-                            controllerMethods.handleOnEvent2(itemData);
-                        })
+                        .attr("class","lineG")
                     ;
                     // render element as child of each element "g"
-                    itemG.append("shape")
+                    itemG.append("path")
+                        .attr("class", "linePath")
+                        .attr("d", d => line(d3.cross(keys, [d], (key, d) => [key, d[key]])))
+                        .attr("fill", "none")
+                        .attr("stroke", d => this.color(d[attributeForColorScale]))
+                        .attr("stroke-opacity", 0.4)
                     // ...
                     ;
                     this.updateFunction1(itemG);
-
-                    // tuka chertaq liniite
-                    if (visData.length > 0) {
-                        const keys = Object.keys(visData[0]);
-                        keys.splice(keys.indexOf("Index"), 1);
-                        // const visDataCpy = visData.forEach(function(v){ delete v.Index });
-
-                        // const keys = Object.keys(visData[0]);
-                        const x = new Map(Array.from(keys, key => [key, d3.scaleLinear(d3.extent(visData, d => this.gimmeValue(visData, key, d[key])), [0,this.width])]));
-                        const y = d3.scalePoint(keys, [this.height,0]);
-
-                        const line = d3.line()
-                            .defined(([, value]) => value != null)
-                            .x(([key, value]) => x.get(key)(value))
-                            .y(([key]) => y(key));
-
-                        const path = this.matSvg.append("g")
-                            .attr("fill", "none")
-                            .attr("stroke-width", 1.5)
-                            .attr("stroke-opacity", 0.4)
-                            .selectAll("path")
-                            .data(visData.slice().sort())
-                            .join("path")
-                            .attr("stroke", d => color(this.gimmeValue(visData, "RentedBikeCount", d["RentedBikeCount"])))
-                            .attr("d", d => line(d3.cross(keys, [d], (key, d) => [key, this.gimmeValue(visData, key, d[key])])))
-                            .append("title")
-                            .text(d => d.name); 
-                          // Create the brush behavior.
-                            const deselectedColor = "#ddd";
-                            const brushHeight = 50;
-                            const brush = d3.brushX()
-                                .extent([
-                                    [0, -(brushHeight / 2)],
-                                    [this.width - 0, brushHeight / 2]
-                                ])
-                                .on("start brush end", brushed);
-
-                            this.axes.call(brush);
-
-                            const selections = new Map();
-                            
-                            function brushed({selection}, key) { 
-                                if (selection === null) selections.delete(key);
-                                else selections.set(key, selection.map(x.get(key).invert));
-                                const selected = [];
-                                
-                                path.each(function(d) {
-                                const active = Array.from(selections).every(([key, [min, max]]) => d[key] >= min && d[key] <= max);
-                                d3.select(this).style("stroke", active ? "red" : deselectedColor);
-                                if (active) {
-                                    d3.select(this).raise();
-                                    selected.push(d);
-                                }
-                                });
-                                // this.matSvg.property("value", selected).dispatch("input");
-                            }
-                        }
                 },
                 update=>{this.updateFunction1(update)},
                 exit =>{
@@ -214,6 +134,42 @@ class ParallelCoordinatesD3 {
                 }
 
             )
+
+        const axes = this.updateAxis(keys);
+        this.selections = new Map();
+        this.brush = axes.call(d3.brushX()
+            .extent([
+                [0,-25],
+                [this.width,25]
+            ])
+            .on("start brush end", ({selection}, key) => {
+                if (selection === null) this.selections.delete(key);
+                else this.selections.set(key, selection.map(this.xScales.get(key).invert));
+                this.matSvg.selectAll(".lineG").select("path")
+                    .attr("stroke", d => Array.from(this.selections).every(([key, [min, max]]) => d[key] >= min && d[key] <= max) ? this.color(d[attributeForColorScale]) : "#ddd")
+                    .attr("stroke-opacity", d => Array.from(this.selections).every(([key, [min, max]]) => d[key] >= min && d[key] <= max) ? 0.4 : 0.02)
+            }).on("end", ({selection}, key) => {
+                if (selection === null) this.selections.delete(key);
+                else this.selections.set(key, selection.map(this.xScales.get(key).invert));
+                let selected = [];
+                selected = this.matSvg.selectAll(".lineG").select("path")
+                    .attr("stroke", d => Array.from(this.selections).every(([key, [min, max]]) => d[key] >= min && d[key] <= max) ? this.color(d[attributeForColorScale]) : "#ddd")
+                    .attr("stroke-opacity", d => Array.from(this.selections).every(([key, [min, max]]) => d[key] >= min && d[key] <= max) ? 0.4 : 0.02)
+                    .filter(d => Array.from(this.selections).every(([key, [min, max]]) => d[key] >= min && d[key] <= max))
+                    .data();
+                controllerMethods.handleOnBrushEnd(selected);
+        }));
+    }
+
+    renderParallelCoordinatesOnSelectionChange = function (selectedData, attributeForColorScale){
+        if (selectedData.visValue == 1) {
+            this.brush.call(d3.brushX().clear);
+            this.selections.clear();
+            this.matSvg.selectAll(".lineG").select("path")
+                .attr("stroke", d => d3.some(selectedData.data, x => d.index == x.index) ? this.color(d[attributeForColorScale]) : "#ddd")
+                .attr("stroke-opacity", d => d3.some(selectedData.data, x => d.index == x.index) ? 0.4 : 0.02);
+
+            // this.matSvg.selectAll(".dotG").select(".dotCircle").attr("stroke", d => d3.some(selectedData.data, x => d.index == x.index) ? "steelblue" : "gray");
         }
     }
 
